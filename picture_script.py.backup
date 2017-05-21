@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+import sys
+import subprocess
+import pyscope
+import pygame
+import PIL
+from time import sleep
+from PIL import Image, ExifTags
+
+def rotate_and_save(infilepath, outfilepath, dispwidth, dispheight):
+    image=Image.open(infilepath)
+    try:
+        for orientation in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[orientation]=='Orientation':
+                break
+        exif=dict(image._getexif().items())
+
+        if exif[orientation] == 3:
+            image=image.rotate(180, expand=True)
+        elif exif[orientation] == 6:
+            image=image.rotate(270, expand=True)
+        elif exif[orientation] == 8:
+            image=image.rotate(90, expand=True)
+
+    except (AttributeError, KeyError, IndexError):
+        # cases: image don't have getexif
+        pass
+    imgwid = image.size[0]
+    imghei = image.size[1]
+    #print("img wid, hei = {}, {}".format(imgwid, imghei))
+
+    dispratio = dispwidth / dispheight
+    imgratio = imgwid / imghei
+
+    #print("ratios disp, img = {}, {}".format(dispratio,imgratio))
+
+    resizeratio = 1.0
+    is_width_constrained = False
+    if imgratio > dispratio:
+        resizeratio = dispwidth / imgwid
+        is_width_constrained = True
+    else:
+        resizeratio = dispheight / imghei
+
+    #print("resizeratio = {}".format(resizeratio))
+
+    newwid = int(imgwid * resizeratio)
+    newhei = int(imghei * resizeratio)
+    #print("New img wid, hei = {}, {}".format(newwid, newhei))
+
+    image = image.resize((newwid, newhei), Image.ANTIALIAS)
+    image.save(outfilepath,"BMP")
+    image.close()
+    return is_width_constrained
+
+def doloop(filepathlist):
+    draw_scope = pyscope.pyscope()
+    draw_screen = draw_scope.screen
+
+    is_second_img = False
+    ready_img = None
+
+    for filepath in filepathlist:
+        dest_file = "/var/tmp/tmp1.BMP" if is_second_img else "/var/tmp/tmp0.BMP"
+        is_second_img = not is_second_img
+        is_width_constrained = rotate_and_save(filepath, dest_file, draw_scope.size[0], draw_scope.size[1])
+        ready_img = pygame.image.load(dest_file).convert()
+        drawX = 0
+        drawY = 0
+        if is_width_constrained:
+            drawY = (draw_scope.size[1] - ready_img.get_height()) // 2
+        else:
+            drawX = (draw_scope.size[0] - ready_img.get_width()) // 2
+        draw_screen.blit(ready_img,(drawX,drawY))
+        pygame.display.flip()
+        sleep(5)
+
+def main(args):
+    pygame.init()
+    pygame.mouse.set_visible(False)
+    doloop(args)
+
+def getPidSet():
+    try:
+        return set((subprocess.check_output(["pidof","fbi"])).split())
+    except subprocess.CalledProcessError:
+        return set()
+
+def oldmain(args):
+    oldSet = getPidSet()
+    for filepath in args:
+        proc = subprocess.Popen(["sudo","fbi","-d","/dev/fb0","-T","2","-noverbose","-a","-u",filepath], stdin=subprocess.PIPE, universal_newlines=True)
+        sleep(1)
+        newPidSet = getPidSet()
+        pid = next(iter(newPidSet - oldSet)).decode('utf-8')
+        oldSet = newPidSet
+        sleep(20)
+        #proc.communicate(input=" ")
+        print("ProcID: " + pid)
+        subprocess.call(["sudo","kill",pid])
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+
