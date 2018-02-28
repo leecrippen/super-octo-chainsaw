@@ -98,8 +98,11 @@ def doloop(filepathlist, draw_scope):
         time_end = time.process_time()
         min_img_time = 50.0
         elapsed_img_time = time_end - time_begin
-        if elapsed_img_time < min_img_time:
-            sleep(min_img_time - elapsed_img_time)
+        while elapsed_img_time < min_img_time:
+            check_input()
+            sleep(0.5)
+            time_end = time.process_time()
+            elapsed_img_time = time_end - time_begin
 
 def main(args):
     pygame.init()
@@ -108,6 +111,8 @@ def main(args):
     draw_scope = pyscope.pyscope()
 
     dirbase = '/media/usb0/pictures'
+    if len(args) > 0:
+        dirbase = args[0]
     filetypes = ('.jpg','.JPG','.jpeg','.JPEG','.gif','.GIF','.png','.PNG','.bmp','.BMP')
     filesgrabbed = []
     for root, dirs, files in os.walk(dirbase):
